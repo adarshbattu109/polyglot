@@ -1896,11 +1896,11 @@ With conditions:
 If you use Polyglot in your research or project, please cite:
 
 ```bibtex
-@software{battu2024polyglot,
+@software{battu2026polyglot,
   title={Polyglot: Multi-Language Translation API},
   author={Battu, Adarsh},
-  year={2024},
-  url={https://github.com/adarsh-battu/polyglot}
+  year={2026},
+  url={https://github.com/adarshbattu109/polyglot}
 }
 ```
 
@@ -1910,4 +1910,4 @@ If you use Polyglot in your research or project, please cite:
 **Version**: 0.1.0  
 **Status**: Beta (Production-ready with active development)
 
-For the latest updates, visit the [GitHub repository](https://github.com/adarsh-battu/polyglot).
+For the latest updates, visit the [GitHub repository](https://github.com/adarshbattu109/polyglot).
