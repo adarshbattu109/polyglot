@@ -1,0 +1,26 @@
+[project]
+name = "polyglot"
+version = "0.1.0"
+description = "Polyglot helps you translate text into multiple languages at once"
+readme = "README.md"
+authors = [
+    { name = "Adarsh Battu", email = "adarsh.battu109@gmail..com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "certifi>=2026.2.25",
+    "fastapi>=0.135.1",
+    "fastapi-mcp>=0.4.0",
+    "openai>=2.29.0",
+    "pandas>=2.3.3",
+    "streamlit>=1.55.0",
+    "uvicorn>=0.42.0",
+]
+
+[project.scripts]
+polyglot = "polyglot:main"
+polyglotapi = "app:main"
+
+[build-system]
+requires = ["uv_build>=0.10.9,<0.11.0"]
+build-backend = "uv_build"
