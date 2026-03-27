@@ -3,7 +3,7 @@
 HOST: str = "localhost"
 PORT: int = 11434
 MODEL: str = "qwen3-coder:480b-cloud"
-API_KEY: str = "ollama"
+API_KEY: str = ""
 
 
 PROMPT = """You are a helpful assistant that translates text into multiple languages.
