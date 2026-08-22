@@ -4,23 +4,39 @@ version = "0.1.0"
 description = "Polyglot helps you translate text into multiple languages at once"
 readme = "README.md"
 authors = [
-    { name = "Adarsh Battu", email = "adarsh.battu109@gmail..com" }
+    { name = "Adarsh Battu", email = "adarsh.battu109@gmail.com" }
 ]
 requires-python = ">=3.12"
 dependencies = [
-    "certifi>=2026.2.25",
     "fastapi>=0.135.1",
     "fastapi-mcp>=0.4.0",
+    # fastapi-mcp 0.4.0 declares `mcp>=1.12.0` with no upper bound, but breaks against
+    # mcp 2.x (Server.__init__ took a description arg that 2.0 dropped). Cap it here
+    # until fastapi-mcp does. Without this an installed wheel crashes on import.
+    "mcp<2",
     "openai>=2.29.0",
-    "pandas>=2.3.3",
-    "streamlit>=1.55.0",
+    "openpyxl>=3.1.5",
+    "python-multipart>=0.0.22",
     "uvicorn>=0.42.0",
 ]
 
 [project.scripts]
-polyglot = "polyglot:main"
-polyglotapi = "app.main:app"
+polyglot = "polyglot.app:main"
 
 [build-system]
 requires = ["uv_build>=0.10.9,<0.11.0"]
 build-backend = "uv_build"
+
+[tool.ruff.format]
+# don't reformat Python snippets inside Markdown — the README aligns comments for
+# readability and the formatter collapses that alignment
+exclude = ["*.md"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+]
