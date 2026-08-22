@@ -1,13 +1,13 @@
 import logging
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 
 import uvicorn
 
-from constants.filepaths import LOG_DIR
+from polyglot.constants.filepaths import LOG_DIR
 
 prefix = "polyglot"
-timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
 log_filename = f"{prefix}_{timestamp}.log"
 
 
@@ -22,9 +22,15 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-def main(host: str = "0.0.0.0", port: int = 8000):
-    logger.info(f"Starting server at {host}:{port}")
-    uvicorn.run("app.main:app", host=host, port=port, reload=True)
+def main(host: str = "127.0.0.1", port: int = 8000, reload: bool = True):
+    """Starts the API server.
+
+    Binds loopback by default: /translate accepts caller-supplied LLM connection details,
+    so a server reachable from the network lets anyone on it aim those at arbitrary
+    addresses. Pass host="0.0.0.0" only on a network you trust.
+    """
+    logger.info("Starting server at %s:%s", host, port)
+    uvicorn.run("polyglot.app.main:app", host=host, port=port, reload=reload)
 
 
 if __name__ == "__main__":

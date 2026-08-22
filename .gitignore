@@ -11,3 +11,8 @@ wheels/
 
 logs/
 artifacts/
+
+# Secrets — never commit. .env.example (placeholders only) is tracked.
+.env
+.env.*
+!.env.example

@@ -1,0 +1,1916 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Polyglot — one text, many languages</title>
+<!-- The register, at 16px: one marigold margin rule, three renderings of unequal length.
+     Inline so it costs no request and works with no network. -->
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%2316162e'/%3E%3Crect x='7' y='7' width='2.5' height='18' rx='1.25' fill='%23e8a33d'/%3E%3Cg fill='%23f5f4f9'%3E%3Crect x='13' y='7' width='12' height='2.5' rx='1.25'/%3E%3Crect x='13' y='14.75' width='8' height='2.5' rx='1.25'/%3E%3Crect x='13' y='22.5' width='10' height='2.5' rx='1.25'/%3E%3C/g%3E%3C/svg%3E">
+<meta name="theme-color" id="themeColor" content="#f5f4f9">
+<script>
+  // Runs before the body renders so a dark reader never gets a white flash. The stored value
+  // is "light", "dark", or absent — absent meaning "follow the OS", which stays reachable.
+  try {
+    const stored = localStorage.getItem("polyglot-theme");
+    if (stored === "light" || stored === "dark") {
+      document.documentElement.dataset.theme = stored;
+    }
+  } catch (error) {
+    // private mode can refuse localStorage; the OS preference is a fine fallback
+  }
+</script>
+<style>
+  /* ── tokens ───────────────────────────────────────────
+     Three faces, each with a job: a sans for the interface, a serif reserved for the text
+     being carried across languages, and a mono for labels and machine detail. All system
+     stacks — the app has to run on a machine with no internet, so no webfonts. */
+  :root {
+    --display: "Inter Tight", Inter, "SF Pro Display", -apple-system, BlinkMacSystemFont,
+               "Segoe UI Variable Display", "Segoe UI", Roboto, sans-serif;
+    --body: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI Variable Text", "Segoe UI",
+            Roboto, "Helvetica Neue", Arial, sans-serif;
+    --reading: "Iowan Old Style", "Palatino Linotype", Palatino, Charter, "Sitka Text",
+               Cambria, Georgia, serif;
+    --mono: "Geist Mono", "JetBrains Mono", ui-monospace, "SF Mono", "Cascadia Mono", Menlo,
+            Consolas, monospace;
+
+    --radius: 0.5rem;
+  }
+
+  /* Light is the default, but the OS preference wins unless the reader has picked a side
+     with the toggle — hence the [data-theme] pair rather than a bare media query. */
+  :root,
+  :root[data-theme="light"] {
+    color-scheme: light;
+    --paper: #f5f4f9;
+    --paper-raised: #ffffff;
+    --ink: #16162e;
+    --ink-soft: #5f5b7d;
+    --rule: #e2dfec;
+    --ochre: #8a5b00;
+    --marigold: #d3902c;
+    --verified: #0f6b45;
+    --alarm: #9c1f2f;
+    --shadow: 0 1px 2px rgb(22 22 46 / 0.06);
+    /* the glyph band sits behind the content; a mix that reads as a whisper on paper reads
+       as invisible on near-black, so each theme gets its own */
+    --ghost: color-mix(in srgb, var(--ink) 42%, var(--paper));
+  }
+
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --paper: #0b0b12;
+    --paper-raised: #16161f;
+    --ink: #eceaf3;
+    --ink-soft: #a09db6;
+    --rule: #292936;
+    --ochre: #dfb875;
+    --marigold: #e8a33d;
+    --verified: #58c891;
+    --alarm: #ef8a86;
+    --shadow: none;
+    --ghost: color-mix(in srgb, var(--ink) 58%, var(--paper));
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --paper: #0b0b12;
+      --paper-raised: #16161f;
+      --ink: #eceaf3;
+      --ink-soft: #a09db6;
+      --rule: #292936;
+      --ochre: #dfb875;
+      --marigold: #e8a33d;
+      --verified: #58c891;
+      --alarm: #ef8a86;
+      --shadow: none;
+      --ghost: color-mix(in srgb, var(--ink) 58%, var(--paper));
+    }
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    padding: 0 1.5rem 6rem;
+    background: var(--paper);
+    color: var(--ink);
+    font: 1rem/1.6 var(--body);
+    letter-spacing: -0.006em;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  main { max-width: 46rem; margin: 0 auto; }
+
+  :where(a, button, input, textarea, select, summary):focus-visible {
+    outline: 2px solid var(--ochre);
+    outline-offset: 2px;
+  }
+
+  /* ── masthead ─────────────────────────────────────── */
+
+  header { padding: 3.5rem 0 2.5rem; }
+
+  .masthead {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+  }
+
+  .wordmark {
+    margin: 0;
+    font: 700 0.8125rem/1 var(--mono);
+    letter-spacing: 0.34em;
+    text-transform: uppercase;
+  }
+
+  /* one button, three states, so the OS preference stays reachable after a manual pick */
+  .theme {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5em;
+    padding: 0.4rem 0.7rem;
+    border-radius: 999px;
+    font-size: 0.65rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+  }
+  .theme-glyph { font-size: 0.85rem; line-height: 1; }
+
+  .tagline {
+    margin: 0.9rem 0 0;
+    max-width: 26rem;
+    color: var(--ink-soft);
+    font-family: var(--display);
+    font-size: 1.0625rem;
+    letter-spacing: -0.014em;
+  }
+
+  /* the glyph band: the page's thesis, one word in many scripts */
+  .scripts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4em 1.1em;
+    margin: 2.25rem 0 0;
+    padding: 0 0 2.25rem;
+    border-bottom: 1px solid var(--rule);
+    font-family: var(--reading);
+    font-size: clamp(1.75rem, 6.5vw, 3.5rem);
+    line-height: 1.15;
+    color: var(--ghost);
+  }
+  .scripts span {
+    animation: surface 0.7s ease-out backwards;
+  }
+  @keyframes surface {
+    from { opacity: 0; transform: translateY(0.35em); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .scripts span { animation: none; }
+  }
+
+  /* ── steps ────────────────────────────────────────────
+     Numbered because the order is load-bearing: nothing can be translated until an
+     endpoint has answered, so step 02 stays disabled until step 01 verifies. */
+
+  .step {
+    margin: 0;
+    padding: 2.25rem 0 2.5rem;
+    border: 0;
+    border-bottom: 1px solid var(--rule);
+  }
+  .step legend {
+    display: flex;
+    align-items: baseline;
+    gap: 0.9rem;
+    padding: 0;
+    font: 600 0.7rem/1 var(--mono);
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+  }
+  .step legend b {
+    font: 500 1.5rem/1 var(--display);
+    letter-spacing: -0.02em;
+    font-variant-numeric: tabular-nums;
+    color: var(--ghost);
+  }
+  .step[disabled] { opacity: 0.42; }
+  .step[disabled] legend { color: var(--ink-soft); }
+  .step:where([disabled]) :where(input, textarea, select, button, summary) {
+    cursor: not-allowed;
+  }
+  .step-note {
+    margin: 0.85rem 0 0;
+    font-family: var(--display);
+    font-size: 0.9375rem;
+    color: var(--ink-soft);
+  }
+
+  .field { margin: 1.75rem 0 0; }
+
+  .label, .fieldset-label {
+    display: block;
+    padding: 0 0 0.6rem;
+    font: 600 0.7rem/1 var(--mono);
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+  }
+
+  .visually-hidden {
+    position: absolute;
+    width: 1px; height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  textarea {
+    width: 100%;
+    min-height: 7.5rem;
+    padding: 0.9rem 1rem;
+    background: var(--paper-raised);
+    border: 1px solid var(--rule);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    color: inherit;
+    /* the source text is content, not chrome, so it gets the reading face */
+    font: 1.0625rem/1.6 var(--reading);
+    resize: vertical;
+  }
+
+  .control,
+  select {
+    width: 100%;
+    padding: 0.55rem 0.75rem;
+    background: var(--paper-raised);
+    border: 1px solid var(--rule);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    color: inherit;
+    font: 0.9375rem var(--mono);
+  }
+  select { font-family: var(--display); font-size: 0.9375rem; }
+  :where(.control, select, textarea)::placeholder { color: var(--ink-soft); opacity: 0.75; }
+  :where(.control, select, textarea):hover:not(:disabled) { border-color: var(--ink-soft); }
+
+  /* the element selector would otherwise outrank .field and eat its top margin */
+  fieldset.languages-set { padding: 0; border: 0; }
+
+  .languages {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+
+  /* native checkboxes, dressed as chips — keyboard and a11y come free */
+  .chip input {
+    position: absolute;
+    width: 1px; height: 1px;
+    opacity: 0;
+  }
+  .chip span {
+    display: block;
+    padding: 0.4rem 0.85rem;
+    border: 1px solid var(--rule);
+    border-radius: 999px;
+    background: var(--paper-raised);
+    box-shadow: var(--shadow);
+    font-family: var(--display);
+    font-size: 0.875rem;
+    letter-spacing: -0.008em;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s, color 0.15s;
+  }
+  .chip span:hover { border-color: var(--ink-soft); }
+  .chip input:checked + span {
+    background: var(--ink);
+    border-color: var(--ink);
+    color: var(--paper);
+  }
+  .chip input:focus-visible + span {
+    outline: 2px solid var(--ochre);
+    outline-offset: 2px;
+  }
+
+  .add {
+    display: flex;
+    gap: 0.5rem;
+    margin: 1rem 0 0;
+  }
+  .add :where(input, select) { flex: 1 1 12rem; min-width: 0; }
+  .add button { flex: 0 0 auto; }
+
+  button {
+    border: 1px solid var(--rule);
+    border-radius: var(--radius);
+    background: var(--paper-raised);
+    box-shadow: var(--shadow);
+    color: var(--ink);
+    font: 600 0.8125rem/1 var(--mono);
+    letter-spacing: 0.08em;
+    padding: 0.55rem 0.9rem;
+    cursor: pointer;
+    transition: border-color 0.15s, background 0.15s;
+  }
+  button:hover:not(:disabled) {
+    border-color: var(--ink-soft);
+    background: color-mix(in srgb, var(--paper-raised) 88%, var(--ink));
+  }
+  button:disabled { opacity: 0.45; cursor: not-allowed; }
+
+  /* ── step 01: connection ──────────────────────────── */
+
+  .endpoint {
+    margin: 1rem 0 0;
+    font: 0.8125rem/1.5 var(--mono);
+    color: var(--ink-soft);
+    overflow-wrap: anywhere;
+  }
+
+  .advanced { margin: 1.5rem 0 0; }
+  .advanced summary {
+    font: 600 0.65rem/1 var(--mono);
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+    cursor: pointer;
+  }
+  .advanced summary:hover { color: var(--ink); }
+
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+    gap: 1rem;
+    margin: 1.25rem 0 0;
+  }
+  .grid label {
+    display: block;
+    font: 600 0.65rem/1 var(--mono);
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+    padding: 0 0 0.45rem;
+  }
+  .hint {
+    margin: 1rem 0 0;
+    font-family: var(--display);
+    font-size: 0.875rem;
+    color: var(--ink-soft);
+  }
+
+  .verify-row {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.9rem 1.1rem;
+    margin: 1.75rem 0 0;
+  }
+  .verify-row button {
+    padding: 0.65rem 1.4rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+
+  /* the verdict, stated plainly next to the button that produced it */
+  .verdict {
+    font-family: var(--display);
+    font-size: 0.9375rem;
+    color: var(--ink-soft);
+  }
+  .verdict[data-state="ok"] { color: var(--verified); }
+  .verdict[data-state="bad"] { color: var(--alarm); }
+  .verdict[data-state="ok"]::before,
+  .verdict[data-state="bad"]::before {
+    display: inline-block;
+    width: 1.15em;
+    font-family: var(--mono);
+    font-weight: 700;
+  }
+  .verdict[data-state="ok"]::before { content: "✓"; }
+  .verdict[data-state="bad"]::before { content: "✕"; }
+
+  .verify-detail {
+    margin: 0.9rem 0 0;
+    font: 0.8125rem/1.6 var(--mono);
+    color: var(--ink-soft);
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+
+  /* ── step 02: submit + status ─────────────────────── */
+
+  .submit {
+    margin: 2.25rem 0 0;
+    padding: 0.85rem 2rem;
+    background: var(--ink);
+    border-color: var(--ink);
+    color: var(--paper);
+    font-size: 0.875rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+  }
+  .submit:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--ink) 86%, var(--paper));
+    border-color: color-mix(in srgb, var(--ink) 86%, var(--paper));
+  }
+
+  .status {
+    margin: 1.5rem 0 0;
+    font-family: var(--display);
+    color: var(--ink-soft);
+  }
+  .status:empty { margin: 0; }
+
+  .status .waiting::after {
+    content: "";
+    display: inline-block;
+    width: 0.55em; height: 0.55em;
+    margin-left: 0.5em;
+    border-radius: 50%;
+    background: var(--marigold);
+    animation: pulse 1.2s ease-in-out infinite;
+  }
+  @keyframes pulse { 50% { opacity: 0.25; } }
+  @media (prefers-reduced-motion: reduce) {
+    .status .waiting::after { animation: none; }
+  }
+
+  .failure {
+    padding: 1rem 1.1rem;
+    background: var(--paper-raised);
+    border: 1px solid var(--rule);
+    border-left: 3px solid var(--alarm);
+    border-radius: var(--radius);
+    color: var(--ink);
+  }
+  .failure p { margin: 0; font-family: var(--display); }
+  .failure pre {
+    margin: 0.6rem 0 0;
+    font: 0.8125rem/1.5 var(--mono);
+    color: var(--ink-soft);
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+
+  /* ── the register ─────────────────────────────────── */
+
+  .register { margin: 3.5rem 0 0; }
+
+  .register-heading {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 1rem;
+    margin: 0;
+    padding: 0 0 0.6rem;
+    border-bottom: 1px solid var(--rule);
+    font: 600 0.7rem/1 var(--mono);
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+  }
+  .register-heading .id { letter-spacing: 0.08em; text-transform: none; }
+
+  /* the source line: what was read, and in which language it was read */
+  .source {
+    display: grid;
+    grid-template-columns: 8rem 1fr;
+    gap: 0 1.5rem;
+    padding: 1.4rem 0;
+    border-bottom: 1px solid var(--rule);
+  }
+  .source dt {
+    margin: 0;
+    font: 600 0.7rem/1.7 var(--mono);
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+  }
+  .source dd {
+    margin: 0;
+    padding-inline-start: 1.5rem;
+    border-inline-start: 2px dotted var(--rule);
+    color: var(--ink-soft);
+    font: 1.0625rem/1.55 var(--reading);
+  }
+  .source .detected {
+    display: block;
+    padding: 0 0 0.35rem;
+    font: 600 0.7rem/1 var(--mono);
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ochre);
+  }
+
+  /* the signature: a parallel-text register against one continuous margin rule */
+  .row {
+    display: grid;
+    grid-template-columns: 8rem 1fr auto;
+    gap: 0 1.5rem;
+    align-items: start;
+    padding: 1.4rem 0;
+    border-bottom: 1px solid var(--rule);
+  }
+  .row dt {
+    font: 600 0.7rem/1.7 var(--mono);
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ochre);
+    overflow-wrap: anywhere;
+  }
+  .row dd {
+    margin: 0;
+    /* logical properties so the margin rule sits at the start of the line in RTL scripts too */
+    padding-inline-start: 1.5rem;
+    border-inline-start: 2px solid var(--marigold);
+    align-self: stretch;
+    font: 1.25rem/1.5 var(--reading);
+  }
+  .row button { opacity: 0.75; }
+  .row:hover button, .row button:focus-visible { opacity: 1; }
+
+  .unstructured {
+    grid-column: 1 / -1;
+    padding: 0;
+  }
+  .unstructured p {
+    margin: 0 0 0.6rem;
+    font-family: var(--display);
+    color: var(--ink-soft);
+  }
+  .unstructured pre {
+    margin: 0;
+    padding: 0.9rem 1rem;
+    background: var(--paper-raised);
+    border: 1px solid var(--rule);
+    border-radius: var(--radius);
+    font: 0.9375rem/1.6 var(--mono);
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+
+  .downloads {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.6rem;
+    margin: 1.5rem 0 0;
+  }
+  .downloads .label { padding: 0; }
+
+  @media (max-width: 34rem) {
+    .row { grid-template-columns: 1fr auto; }
+    .row dt { grid-column: 1 / -1; padding-bottom: 0.5rem; }
+    .row dd { padding-inline-start: 1rem; }
+    .source { grid-template-columns: 1fr; }
+    .source dd { padding-inline-start: 1rem; margin-top: 0.5rem; }
+  }
+
+  /* ── wizard: one panel in the DOM flow at a time ─────
+     Single-panel display is what kills the old overlap — nothing competes for vertical space. */
+  .panel[hidden] { display: none; }
+
+  .wizard-nav {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 1rem;
+    margin: 2.25rem 0 0;
+    padding: 1.5rem 0 0;
+    border-top: 1px solid var(--rule);
+  }
+  .wizard-nav button {
+    padding: 0.65rem 1.4rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+
+  /* the sequence, kept visible while a single panel hides the rest — the current step wears
+     the same marigold rule the register uses for the line being carried across */
+  .stepper {
+    display: flex;
+    align-items: center;
+    gap: 0.85rem;
+    margin: 0 0 2.75rem;
+    padding: 0;
+    list-style: none;
+    font: 600 0.7rem/1 var(--mono);
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--ghost);
+  }
+  .stepper li { display: flex; align-items: center; gap: 0.85rem; }
+  .stepper li span { padding-bottom: 0.4rem; border-bottom: 2px solid transparent; }
+  .stepper li::after { content: ""; width: 1.5rem; height: 1px; background: var(--rule); }
+  .stepper li:last-child::after { display: none; }
+  .stepper li.done { color: var(--ink-soft); }
+  .stepper li.now { color: var(--ink); }
+  .stepper li.now span { border-bottom-color: var(--marigold); }
+
+  /* input mode toggle — two buttons, one pressed */
+  .modes { display: flex; gap: 0.5rem; margin: 0.5rem 0 0; }
+  .modes button[aria-pressed="true"] {
+    background: var(--ink);
+    border-color: var(--ink);
+    color: var(--paper);
+  }
+
+  .dropzone {
+    display: block;
+    margin: 1.75rem 0 0;
+    padding: 2rem 1rem;
+    text-align: center;
+    border: 2px dashed var(--rule);
+    border-radius: var(--radius);
+    background: var(--paper-raised);
+    box-shadow: var(--shadow);
+    color: var(--ink-soft);
+    font-family: var(--display);
+    cursor: pointer;
+  }
+  .dropzone:hover { border-color: var(--ink-soft); }
+  .dropzone.drag { border-color: var(--marigold); color: var(--ink); }
+
+  .templates {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.6rem;
+    margin: 1rem 0 0;
+  }
+  .templates a {
+    font: 600 0.75rem/1 var(--mono);
+    text-decoration: none;
+    color: var(--ink-soft);
+    border: 1px solid var(--rule);
+    border-radius: var(--radius);
+    background: var(--paper-raised);
+    box-shadow: var(--shadow);
+    padding: 0.5rem 0.8rem;
+  }
+  .templates a:hover { border-color: var(--ink-soft); color: var(--ink); }
+
+  /* live word counter: amber near the cap, red past it */
+  .counter {
+    margin: 0.5rem 0 0;
+    text-align: end;
+    font: 0.8125rem/1.4 var(--mono);
+    color: var(--ink-soft);
+  }
+  .counter[data-state="warn"] { color: var(--marigold); }
+  .counter[data-state="over"] { color: var(--alarm); }
+
+  .column-picker { margin: 1.75rem 0 0; }
+  .passthrough {
+    margin: 0.6rem 0 0;
+    font-family: var(--display);
+    font-size: 0.875rem;
+    color: var(--ink-soft);
+  }
+
+  /* the live estimate, stated before the button that spends the money */
+  .estimate {
+    margin: 1.75rem 0 0;
+    padding: 1rem 1.1rem;
+    background: var(--paper-raised);
+    border: 1px solid var(--rule);
+    border-left: 3px solid var(--marigold);
+    border-radius: var(--radius);
+    color: var(--ink);
+  }
+  .estimate .figure { margin: 0; font: 0.9375rem/1.5 var(--mono); }
+  .estimate .rows { margin: 0.3rem 0 0; font-family: var(--display); font-size: 0.875rem; color: var(--ink-soft); }
+  .estimate .disclaimer { margin: 0.6rem 0 0; font-family: var(--display); font-size: 0.8125rem; color: var(--ink-soft); }
+
+  /* preview + results tables share one skin */
+  .preview { margin: 1.5rem 0 0; overflow-x: auto; }
+  .results-table { margin: 1.5rem 0 0; max-height: 32rem; overflow: auto; }
+  table.grid-table { border-collapse: collapse; width: 100%; }
+  table.grid-table th, table.grid-table td {
+    border: 1px solid var(--rule);
+    padding: 0.5rem 0.7rem;
+    text-align: start;
+    vertical-align: top;
+  }
+  table.grid-table th {
+    position: sticky;
+    top: 0;
+    font: 600 0.7rem/1.4 var(--mono);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+    background: var(--paper-raised);
+  }
+  table.grid-table td { font: 1rem/1.5 var(--reading); }
+  td.failed { color: var(--alarm); font: 0.8125rem/1.5 var(--mono); }
+  /* echo the register: the languages a text is carried into wear ochre, the source stays quiet */
+  .results-table th:not(:first-child) { color: var(--ochre); }
+
+  /* estimate-vs-actual token summary, aligned in mono */
+  .tokens {
+    margin: 1.75rem 0 0;
+    padding: 1rem 1.1rem;
+    background: var(--paper-raised);
+    border: 1px solid var(--rule);
+    /* the recorded fact wears ochre; the estimate above it wears marigold — plan vs record */
+    border-left: 3px solid var(--ochre);
+    border-radius: var(--radius);
+    font: 0.875rem/1.6 var(--mono);
+    color: var(--ink);
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <div class="masthead">
+      <h1 class="wordmark">Polyglot</h1>
+      <button type="button" class="theme" id="themeBtn" aria-live="polite">
+        <span class="theme-glyph" id="themeGlyph" aria-hidden="true">◐</span>
+        <span id="themeLabel">System</span>
+      </button>
+    </div>
+    <p class="tagline">One text, carried into every language you need, in a single pass.</p>
+    <p class="scripts" aria-label="Hello, in six scripts">
+      <span>你好</span><span dir="rtl">مرحبا</span><span>こんにちは</span><span>नमस्ते</span><span>Привет</span><span>Γειά&nbsp;σου</span>
+    </p>
+  </header>
+
+  <!-- The three passes a text makes: connect, hand it over, read it back. One panel shows at
+       a time, so the stepper is where you are in that sequence. -->
+  <ol class="stepper" id="stepper" aria-label="Progress">
+    <li><span>Connect</span></li>
+    <li><span>Input</span></li>
+    <li><span>Results</span></li>
+  </ol>
+
+  <form id="form">
+    <!-- Step 1 — Connect. Today's connect flow, unchanged; Next stays locked until it verifies. -->
+    <section class="panel" id="panel1">
+      <fieldset class="step" id="step1">
+        <legend><b>01</b> Connect a model</legend>
+        <p class="step-note">Pick a provider and paste its key. Polyglot checks the connection
+        before you translate anything.</p>
+
+        <div class="field">
+          <label class="label" for="provider">Provider</label>
+          <select id="provider"></select>
+          <p class="hint" id="providerNote"></p>
+        </div>
+
+        <div class="field" id="keyField">
+          <label class="label" for="apiKey">API key</label>
+          <input class="control" id="apiKey" type="password" autocomplete="off" spellcheck="false">
+        </div>
+
+        <details class="advanced" id="advanced">
+          <summary>Endpoint details</summary>
+          <div class="grid">
+            <div>
+              <label for="host">Host</label>
+              <input class="control" id="host" autocomplete="off" spellcheck="false">
+            </div>
+            <div>
+              <label for="port">Port</label>
+              <input class="control" id="port" type="number" min="1" max="65535" inputmode="numeric">
+            </div>
+            <div>
+              <label for="path">Base path</label>
+              <input class="control" id="path" autocomplete="off" spellcheck="false" placeholder="/v1">
+            </div>
+          </div>
+          <p class="endpoint" id="endpoint"></p>
+          <p class="hint">Port 443 uses HTTPS; anything else is sent as plain HTTP. The key is
+          sent with each request and is never stored in your browser.</p>
+        </details>
+
+        <div class="verify-row">
+          <button type="button" id="verifyBtn">Connect</button>
+          <span class="verdict" id="verdict" role="status" aria-live="polite"></span>
+        </div>
+        <p class="verify-detail" id="verifyDetail"></p>
+
+        <div class="field" id="modelField">
+          <label class="label" for="model">Model</label>
+          <div class="add">
+            <select id="model"></select>
+            <button type="button" id="modelEditBtn">Type a name</button>
+          </div>
+          <input class="control" id="modelText" autocomplete="off" spellcheck="false" hidden
+                 aria-label="Model name">
+          <p class="hint" id="modelHint"></p>
+        </div>
+      </fieldset>
+      <nav class="wizard-nav">
+        <span></span>
+        <button type="button" id="nextBtn" disabled>Next &rarr;</button>
+      </nav>
+    </section>
+
+    <!-- Step 2 — Input. Type/paste OR upload, mutually exclusive; language chips shared. -->
+    <section class="panel" id="panel2" hidden>
+      <fieldset class="step">
+        <legend><b>02</b> What to translate</legend>
+
+        <div class="modes" role="group" aria-label="Input mode">
+          <button type="button" id="modeTextBtn" aria-pressed="true">Type or paste</button>
+          <button type="button" id="modeFileBtn" aria-pressed="false">Upload a file</button>
+        </div>
+
+        <div id="textMode">
+          <div class="field">
+            <label class="label" for="text">Text to translate</label>
+            <textarea id="text" placeholder="Type or paste the text you want carried over."></textarea>
+            <p class="counter" id="counter" aria-live="polite">0 / 2,000 words</p>
+          </div>
+
+          <div class="field">
+            <label class="label" for="sourceLanguage">Language of this text</label>
+            <div class="add">
+              <input class="control" id="sourceLanguage" list="sourceList" autocomplete="off"
+                     placeholder="Detect automatically">
+              <datalist id="sourceList"></datalist>
+              <button type="button" id="detectBtn">Detect</button>
+            </div>
+            <p class="hint" id="detectHint">Type it, or let Detect propose one — either way you can
+            correct it before translating. Leave it blank and the model decides for itself.</p>
+          </div>
+        </div>
+
+        <div id="fileMode" hidden>
+          <div class="field">
+            <span class="label">Upload a file</span>
+            <label class="dropzone" id="dropzone" for="fileInput">
+              Drop a .csv, .xlsx or .json file here, or click to choose one.
+            </label>
+            <input id="fileInput" type="file" accept=".csv,.xlsx,.json" class="visually-hidden">
+            <div class="templates">
+              <span class="label" style="padding:0">Templates</span>
+              <a href="/template.csv" download>CSV</a>
+              <a href="/template.xlsx" download>Excel</a>
+              <a href="/template.json" download>JSON</a>
+            </div>
+            <p class="hint" id="uploadHint"></p>
+          </div>
+
+          <div class="preview" id="preview" hidden></div>
+
+          <div class="column-picker" id="columnPicker" hidden>
+            <label class="label" for="columnSel">Column to translate</label>
+            <select id="columnSel"></select>
+            <p class="passthrough">Every other column is left untouched and travels through into
+            the download, so IDs and keys survive.</p>
+          </div>
+        </div>
+
+        <fieldset class="languages-set field">
+          <legend class="fieldset-label">Translate into</legend>
+          <div class="languages" id="languages"></div>
+          <div class="add">
+            <label class="visually-hidden" for="other">Add another language</label>
+            <input class="control" id="other" type="text" placeholder="Add another language" autocomplete="off">
+            <button type="button" id="addBtn">Add</button>
+          </div>
+        </fieldset>
+
+        <div class="estimate" id="estimate" hidden></div>
+
+        <button type="submit" class="submit" id="submit">Translate</button>
+        <p class="status" id="status" role="status" aria-live="polite"></p>
+      </fieldset>
+      <nav class="wizard-nav">
+        <button type="button" id="back2">&larr; Back</button>
+        <span></span>
+      </nav>
+    </section>
+  </form>
+
+  <!-- Step 3 — Results. Register for single text, scrollable table for files. -->
+  <section class="panel" id="panel3" hidden>
+    <div id="results"></div>
+    <nav class="wizard-nav">
+      <button type="button" id="back3">&larr; Back</button>
+      <span></span>
+    </nav>
+  </section>
+</main>
+
+<script>
+const DEFAULT_LANGUAGES = ["Spanish", "French", "German", "Japanese", "Hindi", "Arabic", "Portuguese", "Mandarin Chinese"];
+const CHECKED_BY_DEFAULT = ["Spanish", "French"];
+
+const form = document.getElementById("form");
+const panels = ["panel1", "panel2", "panel3"].map((id) => document.getElementById(id));
+const nextBtn = document.getElementById("nextBtn");
+const modeTextBtn = document.getElementById("modeTextBtn");
+const modeFileBtn = document.getElementById("modeFileBtn");
+const textMode = document.getElementById("textMode");
+const fileMode = document.getElementById("fileMode");
+const counterEl = document.getElementById("counter");
+const dropzone = document.getElementById("dropzone");
+const fileInput = document.getElementById("fileInput");
+const uploadHintEl = document.getElementById("uploadHint");
+const previewEl = document.getElementById("preview");
+const columnPicker = document.getElementById("columnPicker");
+const columnSel = document.getElementById("columnSel");
+const estimateEl = document.getElementById("estimate");
+const providerEl = document.getElementById("provider");
+const providerNoteEl = document.getElementById("providerNote");
+const keyFieldEl = document.getElementById("keyField");
+const apiKeyEl = document.getElementById("apiKey");
+const advancedEl = document.getElementById("advanced");
+const hostEl = document.getElementById("host");
+const portEl = document.getElementById("port");
+const pathEl = document.getElementById("path");
+const modelEl = document.getElementById("model");
+const modelTextEl = document.getElementById("modelText");
+const modelFieldEl = document.getElementById("modelField");
+const modelEditBtn = document.getElementById("modelEditBtn");
+const modelHintEl = document.getElementById("modelHint");
+const endpointEl = document.getElementById("endpoint");
+const verifyBtn = document.getElementById("verifyBtn");
+const verdictEl = document.getElementById("verdict");
+const verifyDetailEl = document.getElementById("verifyDetail");
+const textEl = document.getElementById("text");
+const sourceLanguageEl = document.getElementById("sourceLanguage");
+const sourceListEl = document.getElementById("sourceList");
+const detectBtn = document.getElementById("detectBtn");
+const detectHintEl = document.getElementById("detectHint");
+const DETECT_HINT = detectHintEl.textContent;
+const languagesEl = document.getElementById("languages");
+const otherEl = document.getElementById("other");
+const submitEl = document.getElementById("submit");
+const statusEl = document.getElementById("status");
+const resultsEl = document.getElementById("results");
+
+let providers = [];
+let connected = false;   // gates Next out of step 01; set only by a green /verify
+
+/* ── wizard: one panel visible at a time ─────────────────────────────────── */
+
+const stepperItems = [...document.getElementById("stepper").querySelectorAll("li")];
+function showStep(n) {
+  panels.forEach((p, i) => { p.hidden = i !== n; });
+  stepperItems.forEach((li, i) => {
+    li.classList.toggle("now", i === n);
+    li.classList.toggle("done", i < n);
+    if (i === n) li.setAttribute("aria-current", "step");
+    else li.removeAttribute("aria-current");
+  });
+  window.scrollTo({ top: 0 });
+}
+showStep(0);
+nextBtn.addEventListener("click", () => { if (!nextBtn.disabled) showStep(1); });
+document.getElementById("back2").addEventListener("click", () => showStep(0));
+document.getElementById("back3").addEventListener("click", () => showStep(1));
+
+/* ── step 01: provider presets and verification ─────────────────────────── */
+
+function currentProvider() {
+  return providers.find((p) => p.id === providerEl.value);
+}
+
+/* The model name has two sources: the list the endpoint reported, or a name typed by hand
+   for a server that doesn't publish /v1/models. One is authoritative at a time, and
+   `model()` is the single place the rest of the page reads it from. */
+
+let typingModel = false;
+
+function model() {
+  return (typingModel ? modelTextEl.value : modelEl.value).trim();
+}
+
+function setModelMode(typing, value) {
+  typingModel = typing;
+  modelTextEl.hidden = !typing;
+  modelEl.hidden = typing;
+  modelEditBtn.textContent = typing ? "Choose from list" : "Type a name";
+  if (value !== undefined) (typing ? modelTextEl : modelEl).value = value;
+}
+
+// keep whichever name is in play when switching, so toggling never silently loses it
+modelEditBtn.addEventListener("click", () => {
+  const carried = model();
+  setModelMode(!typingModel);
+  if (typingModel) {
+    modelTextEl.value = carried;
+    modelTextEl.focus();
+  } else if (![...modelEl.options].some((o) => o.value === carried)) {
+    modelHintEl.textContent = `${carried} is not in the list from this endpoint.`;
+  }
+  invalidate();
+});
+
+// Populates the select from what the key can actually see. Preferring the preset's model
+// when present means the common case needs no interaction at all.
+function loadModels(models, preferred) {
+  modelEl.replaceChildren(...models.map((id) => {
+    const option = document.createElement("option");
+    option.value = id;
+    option.textContent = id;
+    return option;
+  }));
+
+  if (!models.length) {
+    setModelMode(true, preferred);
+    modelHintEl.textContent = "This endpoint did not publish a model list. Type the name yourself.";
+    return;
+  }
+
+  setModelMode(false, models.includes(preferred) ? preferred : models[0]);
+  modelHintEl.textContent = models.includes(preferred)
+    ? `${models.length} models available.`
+    : `${models.length} models available. ${preferred} was not among them, so ${models[0]} is selected.`;
+}
+
+// mirrors query_llm: https only on 443, plain http everywhere else
+function showEndpoint() {
+  const host = hostEl.value.trim();
+  const port = portEl.value.trim();
+  const path = pathEl.value.trim() || "/v1";
+  const scheme = port === "443" ? "https" : "http";
+  endpointEl.textContent = host && port
+    ? `\u2192 ${scheme}://${host}:${port}/${path.replace(/^\/+|\/+$/g, "")}`
+    : "";
+}
+
+// Any change to host, port or key invalidates both the verdict and the model list — a green
+// tick, or a list of models, belonging to an endpoint that has since been edited is worse
+// than none at all.
+function invalidate() {
+  connected = false;
+  nextBtn.disabled = true;
+  verdictEl.textContent = "";
+  verdictEl.removeAttribute("data-state");
+  verifyDetailEl.textContent = "";
+  showEndpoint();
+}
+
+// the model can't be chosen before the endpoint has been asked what it has
+function resetModels() {
+  modelFieldEl.hidden = true;
+  modelHintEl.textContent = "";
+  modelEl.replaceChildren();
+  // Typed mode until an endpoint answers: there is no list to choose from yet, and this keeps
+  // the preset's model name readable via model() so Connect can ask for it by name.
+  setModelMode(true, currentProvider()?.model || "");
+}
+
+function applyProvider() {
+  const provider = currentProvider();
+  if (!provider) return;
+  const isCustom = provider.id === "custom";
+
+  if (!isCustom) {
+    hostEl.value = provider.host;
+    portEl.value = String(provider.port);
+    pathEl.value = provider.path || "/v1";
+  }
+  providerNoteEl.textContent = provider.note || "";
+  // a provider that needs no key shouldn't ask for one
+  keyFieldEl.hidden = !provider.needs_key;
+  // Custom is the only case where these fields are the user's job, so that is the only case
+  // where they are open by default
+  advancedEl.open = isCustom;
+  if (isCustom) hostEl.focus();
+  resetModels();
+  invalidate();
+}
+
+providerEl.addEventListener("change", applyProvider);
+[hostEl, portEl, pathEl, apiKeyEl].forEach((el) => el.addEventListener("input", () => {
+  resetModels();
+  invalidate();
+}));
+// changing the model doesn't unmake the connection, only the model claim about it
+modelEl.addEventListener("change", () => { modelHintEl.textContent = ""; });
+
+function connection() {
+  return {
+    host: hostEl.value.trim(),
+    port: Number(portEl.value),
+    path: pathEl.value.trim() || "/v1",
+    model: model(),
+    // trim: a key pasted with a trailing space or newline is the classic "right key, still 401"
+    api_key: apiKeyEl.value.trim(),
+  };
+}
+
+function verdict(state, message, detail) {
+  verdictEl.dataset.state = state;
+  verdictEl.textContent = message;
+  verifyDetailEl.textContent = detail || "";
+}
+
+verifyBtn.addEventListener("click", async () => {
+  const provider = currentProvider();
+  const host = hostEl.value.trim();
+  const port = Number(portEl.value);
+
+  if (!host || !port) {
+    verdict("bad", "Fill in host and port first.");
+    advancedEl.open = true;
+    return;
+  }
+  if (provider?.needs_key && !apiKeyEl.value) {
+    verdict("bad", "This provider needs an API key.");
+    apiKeyEl.focus();
+    return;
+  }
+
+  verifyBtn.disabled = true;
+  verifyBtn.textContent = "Connecting…";
+  verdict("", "");
+
+  // the preset's model is only a preference here — /verify reports it back as available or
+  // not, and the answer is what fills the Model list
+  const preferred = model() || provider?.model || "unknown";
+
+  try {
+    const response = await fetch("/verify", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...connection(), model: preferred }),
+    });
+    const payload = await response.json().catch(() => null);
+
+    if (!payload?.ok) {
+      // A rejected model with a good listing means the key works and only the model is wrong,
+      // so offer the alternatives instead of making the user guess a second time.
+      if (payload?.models?.length) {
+        modelFieldEl.hidden = false;
+        loadModels(payload.models, preferred);
+        verdict("bad", `${preferred} was refused. Pick another model and connect again.`, payload.error);
+        modelEl.focus();
+        return;
+      }
+      verdict("bad", "Could not connect.", payload?.error || `HTTP ${response.status}`);
+      return;
+    }
+
+    modelFieldEl.hidden = false;
+    loadModels(payload.models, preferred);
+    verdict("ok", payload.models.length
+      ? `Connected. ${preferred} answered; ${payload.models.length} ${payload.models.length === 1 ? "model" : "models"} available.`
+      : `Connected. ${preferred} answered.`);
+    connected = true;
+    nextBtn.disabled = false;
+    modelEl.focus();
+  } catch (error) {
+    verdict("bad", "The browser could not reach the Polyglot server.", String(error));
+  } finally {
+    verifyBtn.disabled = false;
+    verifyBtn.textContent = "Connect";
+  }
+});
+
+// build the provider list from the server, so adding one is a constants.py edit
+fetch("/config")
+  .then((r) => (r.ok ? r.json() : null))
+  .then((config) => {
+    providers = config?.providers || [];
+    if (!providers.length) {
+      // no presets means the endpoint is whatever constants.py configured — let the user drive
+      providers = [{ id: "custom", label: "Custom", host: config?.host || "", port: config?.port || 443, model: config?.model || "", needs_key: false, note: "" }];
+    }
+    providerEl.replaceChildren(...providers.map((p) => {
+      const option = document.createElement("option");
+      option.value = p.id;
+      option.textContent = p.label;
+      return option;
+    }));
+    // start on whichever preset matches the server's own defaults, so the two agree
+    const match = providers.find((p) => p.host === config?.host && p.port === config?.port);
+    providerEl.value = (match || providers[0]).id;
+    applyProvider();
+    // the server's configured model beats the preset's — it is what constants.py actually set
+    if (config?.model) modelTextEl.value = config.model;
+    if (config?.path) pathEl.value = config.path;
+    showEndpoint();
+  })
+  .catch(() => {
+    providerNoteEl.textContent = "Could not load provider defaults. Fill in the endpoint details yourself.";
+    advancedEl.open = true;
+  });
+
+[hostEl, portEl].forEach((el) => el.addEventListener("input", showEndpoint));
+
+/* ── step 02: languages ─────────────────────────────────────────────────── */
+
+let chipCount = 0;
+
+function addChip(language, checked) {
+  if (chosen().some((l) => l.toLowerCase() === language.toLowerCase())) return;
+  const id = `lang-${chipCount++}`;
+  const chip = document.createElement("label");
+  chip.className = "chip";
+  chip.htmlFor = id;
+  const box = document.createElement("input");
+  box.type = "checkbox";
+  box.id = id;
+  box.value = language;
+  box.checked = checked;
+  const face = document.createElement("span");
+  face.textContent = language;
+  chip.append(box, face);
+  languagesEl.append(chip);
+}
+
+// every checkbox in the set, chosen or not
+function chosen() {
+  return [...languagesEl.querySelectorAll("input")].map((b) => b.value);
+}
+
+function selected() {
+  return [...languagesEl.querySelectorAll("input:checked")].map((b) => b.value);
+}
+
+DEFAULT_LANGUAGES.forEach((l) => addChip(l, CHECKED_BY_DEFAULT.includes(l)));
+
+// the same names serve as suggestions for the source field
+sourceListEl.replaceChildren(...["English", ...DEFAULT_LANGUAGES].map((l) => {
+  const option = document.createElement("option");
+  option.value = l;
+  return option;
+}));
+
+document.getElementById("addBtn").addEventListener("click", () => {
+  const language = otherEl.value.trim();
+  if (!language) return;
+  addChip(language, true);
+  otherEl.value = "";
+  otherEl.focus();
+  updateEstimate();
+});
+
+// the chips are shared by both input modes; any toggle moves the estimate
+languagesEl.addEventListener("change", updateEstimate);
+
+otherEl.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") {
+    e.preventDefault();
+    document.getElementById("addBtn").click();
+  }
+});
+
+/* ── step 02: input mode, word counter, upload, live estimate ────────────── */
+
+const DISCLAIMER = "Estimates are approximate. Actual token counts come from the provider after each request and will differ, sometimes substantially. Do not use estimates for billing.";
+const enc = new TextEncoder();
+function tokens(s) { return enc.encode(s).length / 4; }   // UTF-8 bytes, not chars
+
+let mode = "text";       // "text" | "file"
+let uploadData = null;    // last /upload response
+let currentFile = null;   // the File itself, resent to /translate-file
+
+function refreshSubmit() {
+  submitEl.disabled = mode === "text"
+    ? wordCount() > 2000
+    : (!uploadData || !columnSel.value);
+}
+
+function setMode(m) {
+  mode = m;
+  textMode.hidden = m !== "text";
+  fileMode.hidden = m !== "file";
+  modeTextBtn.setAttribute("aria-pressed", String(m === "text"));
+  modeFileBtn.setAttribute("aria-pressed", String(m === "file"));
+  statusEl.textContent = "";
+  refreshSubmit();
+  updateEstimate();
+}
+modeTextBtn.addEventListener("click", () => setMode("text"));
+modeFileBtn.addEventListener("click", () => setMode("file"));
+
+// live word counter: amber from 90% of the cap, red and blocking past it
+function wordCount() {
+  const t = textEl.value.trim();
+  return t ? t.split(/\s+/).length : 0;
+}
+function updateCounter() {
+  const n = wordCount();
+  counterEl.textContent = `${n.toLocaleString()} / 2,000 words`;
+  counterEl.dataset.state = n > 2000 ? "over" : n >= 1800 ? "warn" : "";
+  refreshSubmit();
+}
+textEl.addEventListener("input", updateCounter);
+
+/* ── upload: /upload is inspect-only, so it returns a preview + row_count ─── */
+
+async function handleFile(file) {
+  if (!file) return;
+  currentFile = file;
+  uploadData = null;
+  previewEl.hidden = true;
+  columnPicker.hidden = true;
+  uploadHintEl.textContent = "Reading file…";
+  refreshSubmit();
+  updateEstimate();
+
+  const body = new FormData();
+  body.append("file", file);
+  try {
+    const response = await fetch("/upload", { method: "POST", body });
+    const payload = await response.json().catch(() => null);
+    if (!response.ok) {
+      // a 422 (e.g. over 200 rows) carries a plain `detail` string
+      uploadHintEl.textContent = payload?.detail ? String(payload.detail) : `Upload failed (HTTP ${response.status}).`;
+      return;
+    }
+    uploadData = payload;
+    uploadHintEl.textContent = `${file.name} — ${payload.row_count.toLocaleString()} ${payload.row_count === 1 ? "row" : "rows"}.`;
+    renderPreview(payload);
+    populateColumns(payload);
+  } catch (error) {
+    uploadHintEl.textContent = `Could not upload: ${error}`;
+  } finally {
+    refreshSubmit();
+    updateEstimate();
+  }
+}
+
+fileInput.addEventListener("change", () => handleFile(fileInput.files[0]));
+["dragover", "dragenter"].forEach((ev) => dropzone.addEventListener(ev, (e) => {
+  e.preventDefault();
+  dropzone.classList.add("drag");
+}));
+["dragleave", "dragend", "drop"].forEach((ev) => dropzone.addEventListener(ev, (e) => {
+  e.preventDefault();
+  dropzone.classList.remove("drag");
+}));
+dropzone.addEventListener("drop", (e) => {
+  if (e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]);
+});
+
+function renderPreview(p) {
+  const cols = p.columns || [];
+  const table = document.createElement("table");
+  table.className = "grid-table";
+  const head = document.createElement("tr");
+  cols.forEach((c) => { const th = document.createElement("th"); th.textContent = c; head.append(th); });
+  const thead = document.createElement("thead");
+  thead.append(head);
+  const tbody = document.createElement("tbody");
+  (p.preview || []).forEach((r) => {
+    const tr = document.createElement("tr");
+    cols.forEach((c) => { const td = document.createElement("td"); td.textContent = String(r[c] ?? ""); td.dir = "auto"; tr.append(td); });
+    tbody.append(tr);
+  });
+  table.append(thead, tbody);
+  previewEl.replaceChildren(table);
+  previewEl.hidden = false;
+}
+
+function populateColumns(p) {
+  const opts = (p.text_columns?.length ? p.text_columns : p.columns) || [];
+  columnSel.replaceChildren(...opts.map((c) => {
+    const o = document.createElement("option");
+    o.value = c;
+    o.textContent = c;
+    return o;
+  }));
+  if (p.suggested_column && opts.includes(p.suggested_column)) columnSel.value = p.suggested_column;
+  columnPicker.hidden = !opts.length;
+}
+
+columnSel.addEventListener("change", () => { refreshSubmit(); updateEstimate(); });
+
+/* ── the live estimate — reimplemented from the Python formula (helper/batching.py estimate),
+   kept in sync by hand so the two agree; change both together.
+   /upload only carries a 3-row preview, so text_tokens is the mean over the preview cells
+   scaled by row_count, and distinct rows are approximated as all rows until translate. ─── */
+
+function fileEstimate() {
+  if (mode !== "file" || !uploadData) return null;
+  const col = columnSel.value;
+  const langs = selected();
+  const cells = (uploadData.preview || []).map((r) => String(r[col] ?? ""));
+  if (!col || !langs.length || !cells.length) return null;
+  const avg = cells.reduce((sum, c) => sum + tokens(c), 0) / cells.length;
+  const rows = uploadData.row_count;
+  const textTokens = avg * rows;
+  const requests = Math.ceil(rows / 25);
+  return {
+    requests,
+    input: Math.round(textTokens + 40 * 2 * requests),
+    output: Math.round(textTokens * langs.length * 1.3),
+    rows,
+  };
+}
+
+function updateEstimate() {
+  const e = fileEstimate();
+  if (!e) { estimateEl.hidden = true; estimateEl.replaceChildren(); return; }
+  const n = (x) => Math.round(x).toLocaleString();
+  const figure = document.createElement("p");
+  figure.className = "figure";
+  figure.textContent = `Estimate: ~${e.requests} ${e.requests === 1 ? "request" : "requests"} · ~${n(e.input)} input + ~${n(e.output)} output tokens`;
+  const rows = document.createElement("p");
+  rows.className = "rows";
+  rows.textContent = `~${n(e.rows)} rows`;
+  const disclaimer = document.createElement("p");
+  disclaimer.className = "disclaimer";
+  disclaimer.textContent = DISCLAIMER;
+  estimateEl.replaceChildren(figure, rows, disclaimer);
+  estimateEl.hidden = false;
+}
+
+// small, held-together status message that keeps the reader on step 02
+function warn(message) { statusEl.replaceChildren(); statusEl.textContent = message; }
+
+/* ── detect the source language ─────────────────────────────────────────── */
+
+// whether what's in the box came from Detect or from the user — the results register says
+// which, and typing over a suggestion makes it the user's again
+let usedDetect = false;
+sourceLanguageEl.addEventListener("input", () => {
+  usedDetect = false;
+  detectHintEl.textContent = DETECT_HINT;
+});
+
+detectBtn.addEventListener("click", async () => {
+  const text = textEl.value.trim();
+  if (!text) {
+    detectHintEl.textContent = "Enter the text first — there is nothing to identify yet.";
+    textEl.focus();
+    return;
+  }
+
+  detectBtn.disabled = true;
+  detectBtn.textContent = "Detecting…";
+  detectHintEl.textContent = "Asking the model…";
+
+  try {
+    const response = await fetch("/detect", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text, ...connection() }),
+    });
+    const payload = await response.json().catch(() => null);
+
+    if (!response.ok || !payload?.language) {
+      detectHintEl.textContent = `Detection failed: ${payload?.error || `HTTP ${response.status}`}. Type the language instead.`;
+      return;
+    }
+
+    sourceLanguageEl.value = payload.language;
+    usedDetect = true;
+    detectHintEl.textContent = payload.confidence === "low"
+      ? `${payload.language}, but the model is unsure — check it before translating.`
+      : `${payload.language}, ${payload.confidence} confidence. Correct it if that's wrong.`;
+  } catch (error) {
+    detectHintEl.textContent = `Detection failed: ${error}. Type the language instead.`;
+  } finally {
+    detectBtn.disabled = false;
+    detectBtn.textContent = "Detect";
+  }
+});
+
+/* ── results ────────────────────────────────────────────────────────────── */
+
+function fail(message, detail) {
+  const box = document.createElement("div");
+  box.className = "failure";
+  box.setAttribute("role", "alert");
+  const line = document.createElement("p");
+  line.textContent = message;
+  box.append(line);
+  if (detail) {
+    const pre = document.createElement("pre");
+    pre.textContent = detail;
+    box.append(pre);
+  }
+  resultsEl.replaceChildren(box);
+}
+
+function copyButton(value) {
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.textContent = "Copy";
+  btn.addEventListener("click", async () => {
+    await navigator.clipboard.writeText(value);
+    btn.textContent = "Copied";
+    setTimeout(() => { btn.textContent = "Copy"; }, 1600);
+  });
+  return btn;
+}
+
+function download(filename, mime, body) {
+  const url = URL.createObjectURL(new Blob([body], { type: mime }));
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+// One field per RFC 4180: double the quotes, wrap the lot. Excel needs CRLF and the BOM
+// below, or it reads a UTF-8 file as Latin-1 and mangles every non-Latin script.
+function csvCell(value) {
+  return `"${String(value ?? "").replace(/"/g, '""')}"`;
+}
+
+function toCsv(result) {
+  const rows = [
+    ["Language", "Translation"],
+    [`Source (${result.source_language || "unknown"})`, result.text || ""],
+    ...(result.translations || []).map((t) => [t.language ?? "", t.translation ?? ""]),
+  ];
+  return "﻿" + rows.map((r) => r.map(csvCell).join(",")).join("\r\n");
+}
+
+function downloadRow(result) {
+  const stem = `polyglot-${result.id || "translations"}`;
+  const row = document.createElement("div");
+  row.className = "downloads";
+
+  const label = document.createElement("span");
+  label.className = "label";
+  label.textContent = "Download";
+  row.append(label);
+
+  const json = document.createElement("button");
+  json.type = "button";
+  json.textContent = "JSON";
+  json.addEventListener("click", () => {
+    download(`${stem}.json`, "application/json", JSON.stringify(result, null, 2));
+  });
+
+  const csv = document.createElement("button");
+  csv.type = "button";
+  csv.textContent = "CSV for Excel";
+  csv.addEventListener("click", () => {
+    download(`${stem}.csv`, "text/csv;charset=utf-8", toCsv(result));
+  });
+
+  row.append(json, csv);
+  return row;
+}
+
+function render(result) {
+  const register = document.createElement("section");
+  register.className = "register";
+
+  const heading = document.createElement("h2");
+  heading.className = "register-heading";
+  const label = document.createElement("span");
+  label.textContent = "Translations";
+  const id = document.createElement("span");
+  id.className = "id";
+  id.textContent = result.id || "";
+  heading.append(label, id);
+  register.append(heading);
+
+  const list = document.createElement("dl");
+  list.style.margin = "0";
+
+  // state the language the text was read as — whether the user named it or the model did
+  if (result.text) {
+    const source = document.createElement("div");
+    source.className = "source";
+    const dt = document.createElement("dt");
+    dt.textContent = "Source";
+    const dd = document.createElement("dd");
+    dd.dir = "auto";
+    if (result.source_language) {
+      const provenance = document.createElement("span");
+      provenance.className = "detected";
+      // three states: the user typed it, Detect proposed it and the user kept it, or it was
+      // left blank and the translating model worked it out on its own
+      const named = sourceLanguageEl.value.trim();
+      const origin = !named ? "detected while translating" : usedDetect ? "detected" : "as you specified";
+      provenance.textContent = `${result.source_language} — ${origin}`;
+      dd.append(provenance);
+    }
+    dd.append(document.createTextNode(result.text));
+    source.append(dt, dd);
+    list.append(source);
+  }
+
+  // helper.py falls back to a single {language: "response"} entry when the model
+  // returns non-JSON — that is raw output, not a translation.
+  if (result.raw_response) {
+    const row = document.createElement("div");
+    row.className = "row";
+    const block = document.createElement("div");
+    block.className = "unstructured";
+    const note = document.createElement("p");
+    note.textContent = "The model answered in plain text instead of the expected format. Its raw reply:";
+    const pre = document.createElement("pre");
+    pre.textContent = result.raw_response;
+    block.append(note, pre);
+    row.append(block, copyButton(result.raw_response));
+    list.append(row);
+  } else {
+    for (const t of result.translations || []) {
+      const row = document.createElement("div");
+      row.className = "row";
+      const dt = document.createElement("dt");
+      dt.textContent = t.language ?? "";
+      const dd = document.createElement("dd");
+      dd.textContent = t.translation ?? "";
+      dd.dir = "auto";
+      row.append(dt, dd, copyButton(t.translation ?? ""));
+      list.append(row);
+    }
+  }
+
+  register.append(list, downloadRow(result), textTokenLine(result.usage));
+  resultsEl.replaceChildren(register);
+}
+
+// prompt_tokens/completion_tokens is the OpenAI shape; input_tokens/output_tokens the fallback
+function inOut(u) {
+  if (!u) return null;
+  const i = u.prompt_tokens ?? u.input_tokens;
+  const o = u.completion_tokens ?? u.output_tokens;
+  if (i == null && o == null) return null;
+  return [i ?? 0, o ?? 0];
+}
+
+// a single text is one request; a missing usage must not read as a free request
+function textTokenLine(usage) {
+  const div = document.createElement("div");
+  div.className = "tokens";
+  const io = inOut(usage);
+  div.textContent = io
+    ? `Tokens — actual ${io[0].toLocaleString()} in / ${io[1].toLocaleString()} out (1 request)`
+    : "Tokens — actual: not reported by this endpoint";
+  return div;
+}
+
+/* ── file results: table, downloads, estimate vs actual ──────────────────── */
+
+function rowsToCsv(columns, rows) {
+  const out = [columns, ...rows.map((r) => columns.map((c) => r[c]))];
+  return "﻿" + out.map((r) => r.map(csvCell).join(",")).join("\r\n");
+}
+
+function fileDownloadRow(res) {
+  const cols = res.columns || [];
+  const rows = res.rows || [];
+  const row = document.createElement("div");
+  row.className = "downloads";
+  const label = document.createElement("span");
+  label.className = "label";
+  label.textContent = "Download";
+  row.append(label);
+
+  const csv = document.createElement("button");
+  csv.type = "button";
+  csv.textContent = "CSV for Excel";
+  csv.addEventListener("click", () => download("polyglot-translations.csv", "text/csv;charset=utf-8", rowsToCsv(cols, rows)));
+
+  const json = document.createElement("button");
+  json.type = "button";
+  json.textContent = "JSON";
+  json.addEventListener("click", () => download("polyglot-translations.json", "application/json", JSON.stringify(rows, null, 2)));
+
+  row.append(csv, json);
+  return row;
+}
+
+// the guess and the bill, side by side; a null spent count reads honestly, not as zero
+function tokensBlock(res) {
+  const div = document.createElement("div");
+  div.className = "tokens";
+  const est = res.estimate || {};
+  const spent = res.spent || {};
+  const n = (x) => Number(x).toLocaleString();
+  const spentTokens = (spent.input_tokens == null && spent.output_tokens == null)
+    ? "not reported by this endpoint"
+    : `${n(spent.input_tokens)} in / ${n(spent.output_tokens)} out`;
+  const reqs = spent.requests != null ? ` (${spent.requests} ${spent.requests === 1 ? "request" : "requests"})` : "";
+  div.textContent =
+    `Tokens   estimated ~${n(est.input_tokens ?? 0)} in / ~${n(est.output_tokens ?? 0)} out\n` +
+    `         actual    ${spentTokens}${reqs}`;
+  return div;
+}
+
+function fileTable(res) {
+  const wrap = document.createElement("div");
+  wrap.className = "results-table";
+  const cols = [res.column, ...(res.languages || [])];
+  const table = document.createElement("table");
+  table.className = "grid-table";
+  const head = document.createElement("tr");
+  cols.forEach((c) => { const th = document.createElement("th"); th.textContent = c; head.append(th); });
+  const thead = document.createElement("thead");
+  thead.append(head);
+  const tbody = document.createElement("tbody");
+  (res.rows || []).forEach((r) => {
+    const tr = document.createElement("tr");
+    cols.forEach((c) => {
+      const td = document.createElement("td");
+      const value = String(r[c] ?? "");
+      td.textContent = value;
+      td.dir = "auto";
+      if (value === "[translation failed]") td.className = "failed";
+      tr.append(td);
+    });
+    tbody.append(tr);
+  });
+  table.append(thead, tbody);
+  wrap.append(table);
+  return wrap;
+}
+
+function renderFileResult(res) {
+  const section = document.createElement("section");
+  section.className = "register";
+  const heading = document.createElement("h2");
+  heading.className = "register-heading";
+  const label = document.createElement("span");
+  label.textContent = "Translations";
+  const id = document.createElement("span");
+  id.className = "id";
+  id.textContent = `${(res.rows || []).length} rows · ${(res.languages || []).length} languages`;
+  heading.append(label, id);
+  section.append(heading, fileDownloadRow(res), tokensBlock(res), fileTable(res));
+  resultsEl.replaceChildren(section);
+}
+
+/* ── submit ─────────────────────────────────────────────────────────────── */
+
+// Pydantic 422s carry `detail` (a list or a string); an upstream failure carries `error`.
+function serverDetail(payload) {
+  return payload.error || (Array.isArray(payload.detail)
+    ? payload.detail.map((d) => `${(d.loc || []).join(".")}: ${d.msg}`).join("\n")
+    : payload.detail);
+}
+
+form.addEventListener("submit", (event) => {
+  event.preventDefault();
+  if (!connected) {
+    verdict("bad", "Connect a model first.");
+    showStep(0);
+    return;
+  }
+  if (!model()) {
+    verdict("bad", "Choose a model first.");
+    showStep(0);
+    return;
+  }
+  if (!selected().length) { warn("Pick at least one language to translate into."); return; }
+  (mode === "file" ? submitFile : submitText)();
+});
+
+async function submitText() {
+  const text = textEl.value.trim();
+  const target_languages = selected();
+  if (!text) { warn("Enter some text to translate."); textEl.focus(); return; }
+  if (wordCount() > 2000) { warn("The text is over the 2,000-word limit. Trim it or upload a file instead."); return; }
+
+  submitEl.disabled = true;
+  submitEl.textContent = "Translating…";
+  statusEl.replaceChildren();
+  const waiting = document.createElement("span");
+  waiting.className = "waiting";
+  waiting.textContent = `Translating into ${target_languages.length} ${target_languages.length === 1 ? "language" : "languages"}. This can take up to 15 seconds.`;
+  statusEl.append(waiting);
+
+  try {
+    const response = await fetch("/translate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text, target_languages, source_language: sourceLanguageEl.value.trim(), ...connection() }),
+    });
+    let payload;
+    try { payload = await response.json(); } catch { fail(`The server replied with ${response.status} and no readable body.`); showStep(2); return; }
+    if (!response.ok) {
+      const detail = serverDetail(payload);
+      fail(response.status === 422 ? "The request was rejected as invalid." : "The translation service could not be reached.", detail ? String(detail) : `HTTP ${response.status}`);
+      showStep(2);
+      return;
+    }
+    render(payload);
+    showStep(2);
+  } catch (error) {
+    fail("The browser could not reach the Polyglot server.", String(error));
+    showStep(2);
+  } finally {
+    submitEl.disabled = false;
+    submitEl.textContent = "Translate";
+    if (statusEl.querySelector(".waiting")) statusEl.textContent = "";
+    refreshSubmit();
+  }
+}
+
+async function submitFile() {
+  const target_languages = selected();
+  if (!uploadData || !currentFile) { warn("Upload a file first."); return; }
+  if (!columnSel.value) { warn("Choose a column to translate."); return; }
+
+  submitEl.disabled = true;
+  submitEl.textContent = "Translating…";
+  statusEl.replaceChildren();
+  const waiting = document.createElement("span");
+  waiting.className = "waiting";
+  waiting.textContent = `Translating ${uploadData.row_count.toLocaleString()} rows into ${target_languages.length} ${target_languages.length === 1 ? "language" : "languages"}. This can take a while.`;
+  statusEl.append(waiting);
+
+  const body = new FormData();
+  body.append("file", currentFile);
+  body.append("column", columnSel.value);
+  target_languages.forEach((l) => body.append("target_languages", l));
+  body.append("source_language", sourceLanguageEl.value.trim());
+  const c = connection();
+  body.append("host", c.host);
+  body.append("port", String(c.port));
+  body.append("path", c.path);
+  body.append("model", c.model);
+  body.append("api_key", c.api_key);
+
+  try {
+    const response = await fetch("/translate-file", { method: "POST", body });
+    let payload;
+    try { payload = await response.json(); } catch { fail(`The server replied with ${response.status} and no readable body.`); showStep(2); return; }
+    if (!response.ok) {
+      const detail = serverDetail(payload);
+      fail(response.status === 422 ? "The request was rejected as invalid." : "The translation service could not be reached.", detail ? String(detail) : `HTTP ${response.status}`);
+      showStep(2);
+      return;
+    }
+    renderFileResult(payload);
+    showStep(2);
+  } catch (error) {
+    fail("The browser could not reach the Polyglot server.", String(error));
+    showStep(2);
+  } finally {
+    submitEl.disabled = false;
+    submitEl.textContent = "Translate";
+    if (statusEl.querySelector(".waiting")) statusEl.textContent = "";
+    refreshSubmit();
+  }
+}
+
+// ── theme ────────────────────────────────────────────────────────────────────
+// Three states rather than two: once you've picked a side you can still hand the choice
+// back to the OS, which a plain light/dark switch takes away.
+// Geometric shapes rather than a sun and a moon: those live in emoji or symbol fonts that
+// aren't on every machine, and a fallback box is worse than a plain circle.
+const THEMES = [
+  { value: "", glyph: "◐", label: "System" },
+  { value: "light", glyph: "○", label: "Light" },
+  { value: "dark", glyph: "●", label: "Dark" },
+];
+const themeBtn = document.getElementById("themeBtn");
+const themeGlyphEl = document.getElementById("themeGlyph");
+const themeLabelEl = document.getElementById("themeLabel");
+const themeColorEl = document.getElementById("themeColor");
+
+function applyTheme(value) {
+  const theme = THEMES.find((t) => t.value === value) || THEMES[0];
+  if (theme.value) {
+    document.documentElement.dataset.theme = theme.value;
+  } else {
+    delete document.documentElement.dataset.theme;
+  }
+  themeGlyphEl.textContent = theme.glyph;
+  themeLabelEl.textContent = theme.label;
+  themeBtn.title = `Colour theme: ${theme.label}. Click to change.`;
+  // the address bar has to match whatever the page actually resolved to
+  themeColorEl.content = getComputedStyle(document.body).backgroundColor;
+}
+
+themeBtn.addEventListener("click", () => {
+  const current = document.documentElement.dataset.theme || "";
+  const next = THEMES[(THEMES.findIndex((t) => t.value === current) + 1) % THEMES.length];
+  applyTheme(next.value);
+  try {
+    if (next.value) localStorage.setItem("polyglot-theme", next.value);
+    else localStorage.removeItem("polyglot-theme");
+  } catch (error) {
+    // nothing to do: the choice still holds for this page
+  }
+});
+
+// while on System, follow the OS if it changes mid-session
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => {
+  if (!document.documentElement.dataset.theme) applyTheme("");
+});
+
+applyTheme(document.documentElement.dataset.theme || "");
+
+// stagger the script band on load, once
+document.querySelectorAll(".scripts span").forEach((el, i) => {
+  el.style.animationDelay = `${i * 90}ms`;
+});
+
+// initial input state: the counter reads 0 and the button reflects the empty text mode
+updateCounter();
+refreshSubmit();
+</script>
+</body>
+</html>

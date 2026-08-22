@@ -16,6 +16,7 @@ dependencies = [
     "mcp<2",
     "openai>=2.29.0",
     "openpyxl>=3.1.5",
+    "pandas>=3.0.5",
     "python-multipart>=0.0.22",
     "uvicorn>=0.42.0",
 ]
@@ -31,6 +32,11 @@ build-backend = "uv_build"
 # don't reformat Python snippets inside Markdown — the README aligns comments for
 # readability and the formatter collapses that alignment
 exclude = ["*.md"]
+
+[tool.ruff.lint.flake8-bugbear]
+# FastAPI's File()/Form()/Depends() in argument defaults is the framework idiom, not the
+# B008 mutable-default trap — the calls are what wire request parsing to the parameter.
+extend-immutable-calls = ["fastapi.File", "fastapi.Form", "fastapi.Depends"]
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]
