@@ -1,6 +1,6 @@
 [project]
 name = "polyglot"
-version = "0.1.0"
+version = "0.2.0"
 description = "Polyglot helps you translate text into multiple languages at once"
 readme = "README.md"
 authors = [
