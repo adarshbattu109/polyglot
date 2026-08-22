@@ -78,8 +78,14 @@ Telugu string at 8 tokens when the reality is nearer 21. This number exists to w
 spend, so erring high is correct; an estimate that lies low is worse than no estimate. Output
 is `distinct × languages × 1.3`, since translations usually run slightly longer than the source.
 
-Labelled an estimate everywhere it appears. A real count needs the provider's own tokeniser —
-a dependency and a per-provider divergence for a number that only has to be right to ±30%.
+**Chat framing overhead, measured.** A live probe against `gpt-oss:120b` showed bytes/4 alone
+under-counting input by 82%: a 58-byte prompt estimated at 14 tokens actually cost 80. The gap
+is per-message role and format scaffolding that the payload text does not contain. The
+estimator therefore adds a flat `MESSAGE_OVERHEAD = 40` tokens per message (2 messages per
+request: system + user) on top of the byte estimate. Without it the estimate systematically
+lies low, which is the one direction a spend warning must never err.
+
+The estimate stays an estimate. See "Estimate vs actual" below.
 
 ### `helper/helper.py` — one new function
 
@@ -94,7 +100,8 @@ model that reorders its reply cannot scramble the output.
 - `POST /upload` — parse and inspect only. Returns columns, row count, first 3 rows. No LLM
   call, so a user can see what was understood before spending anything.
 - `POST /translate-file` — the batched run. Returns the full table plus a `spent` summary:
-  requests made, rows translated, rows deduped, rows failed.
+  requests made, rows translated, rows deduped, rows failed, and `input_tokens` /
+  `output_tokens` summed from each batch's `response.usage`.
 
   **The file is sent twice.** `/upload` is inspect-only and keeps no state; `/translate-file`
   receives the file again as multipart along with the chosen column and languages. The
@@ -124,6 +131,39 @@ Same request count and same tokens as sequential — purely wall clock. 6 chunks
 - Retry happens inside the worker, so one bad chunk does not serialise the rest.
 - The endpoint stays `def`, not `async def` — FastAPI runs sync endpoints in a threadpool
   already and this nests correctly.
+
+## Estimate vs actual
+
+The OpenAI-compatible response already carries the provider's own count in `response.usage`
+(`prompt_tokens`, `completion_tokens`, `total_tokens`), verified live against `gpt-oss:120b`.
+This is the authoritative number, computed by the provider's real tokeniser, and it costs **no
+extra request** — it is already in every reply we get back and is currently discarded.
+
+`query_llm`, `translate_batch` and `detect_language` each read `response.usage` and return it.
+The file run sums usage across all batches. Both numbers then appear together:
+
+```
+Tokens   estimated ~2,300 in / ~10,100 out
+         actual     2,655 in /   9,041 out   (6 requests)
+```
+
+Showing both is the point. The estimate is what you decide on before spending; the actual is
+what you were charged. Seeing them side by side is also how the estimator's accuracy gets
+audited in real use rather than assumed.
+
+**Disclaimer, shown in the UI wherever an estimate appears** — not buried in a tooltip:
+
+> Estimates are approximate. Actual token counts come from the provider after each request and
+> will differ, sometimes substantially. Do not use estimates for billing.
+
+The wording is deliberate about "substantially": a model that pads its reply with prose, or
+reasons before answering, can exceed an output estimate several times over. The live probe saw
+102 actual output tokens against 16 estimated for exactly that reason. An estimate that
+promises precision it cannot deliver is worse than one that admits its error bars.
+
+If `usage` is absent — some self-hosted servers omit it — the actual column reads
+"not reported by this endpoint" rather than zero. A missing count must not render as a free
+request.
 
 ## Partial failure
 
@@ -157,6 +197,7 @@ Above the Translate button, once a file is parsed and languages chosen:
 ```
 Estimate: 6 requests · ~2,300 input + ~10,100 output tokens
 135 distinct rows (65 duplicates skipped)
+Approximate. Actual counts come from the provider and will differ.
 ```
 
 Recomputed on every language toggle and column change, so ticking a sixth language visibly
@@ -166,6 +207,13 @@ moves the number. The cost is on screen before the button, not in a log afterwar
 parallel text. Table for files: source column plus one column per language, scrollable, with
 CSV / Excel / JSON download above it. The `spent` summary sits beside the estimate so the guess
 can be checked against reality.
+
+The token line appears on **both** paths. A single text is one request, so its actual usage is
+just that reply's `usage` — cheap to show and the same code path as the file summary. It also
+gives the estimator a constant stream of single-request accuracy checks.
+
+`translate_to_languages` gains usage in its return value but keeps its existing keys, so the
+`/translate` response stays backward compatible and existing tests continue to pass.
 
 `estimate` is deliberately not an endpoint. It is a pure function called by `/translate-file`
 for its summary, and reimplemented in ~10 lines of JS for the live display. Two small
@@ -182,12 +230,16 @@ implementations beat a network round-trip on every checkbox click.
 - `apply` maps a distinct translation onto every duplicate row
 - 201 rows is a 422 naming the count; 2,001 words is a 422 naming the count
 
-`translate_batch` extends the existing `FakeOpenAI` pattern in `test_helper.py`:
+`translate_batch` extends the existing `FakeOpenAI` pattern in `test_helper.py`, which gains a
+`usage` attribute:
 
 - a reply missing a row triggers exactly one retry, then marks those rows failed
 - a reply with reordered indices still reassembles correctly
 - a batch run makes `ceil(distinct / 25)` requests, asserted by counting stub calls — this is
   the test that would catch a regression back to per-row
+- `usage` is read through to the response, and summed across batches on a file run
+- a reply with **no** `usage` block yields `None`, not `0` — asserted, because a silent zero
+  would render as a free request in the UI
 
 No test reaches the network, per the existing `conftest.py` contract.
 
@@ -195,5 +247,9 @@ No test reaches the network, per the existing `conftest.py` contract.
 
 - Progress streaming (SSE/websocket). A 6-request run finishing in ~8s does not need it.
 - A job store, cancellation, or resumable uploads. That is what the 200-row cap buys.
-- A real tokeniser. The ±30% estimate is enough to warn about spend.
+- A real tokeniser (`tiktoken` or similar). It is a dependency that diverges per provider, and
+  `response.usage` already gives the exact count for free after the fact. The estimate only has
+  to be good enough to decide with.
+- Cost in currency. Per-model pricing changes without notice and would go stale in the repo.
+  Tokens are the honest unit.
 - Translating multiple columns at once.
