@@ -14,7 +14,7 @@ dependencies = [
     # mcp 2.x (Server.__init__ took a description arg that 2.0 dropped). Cap it here
     # until fastapi-mcp does. Without this an installed wheel crashes on import.
     "mcp<2",
-    "openai>=2.29.0",
+    "openai>=3.26.1",
     "openpyxl>=3.1.5",
     "pandas>=3.0.5",
     "python-multipart>=0.0.22",
